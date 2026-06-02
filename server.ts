@@ -30,7 +30,7 @@ interface DatabaseSchema {
 const app = express();
 const port = Number(process.env.PORT || 4000);
 
-app.use(cors());
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
 const dbPath = path.resolve(process.cwd(), 'database.json');
