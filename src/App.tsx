@@ -322,6 +322,15 @@ export default function App() {
       return;
     }
 
+    if (loginEmail.trim().toLowerCase() === ADMIN_EMAIL && loginPassword === ADMIN_PASSWORD) {
+      setIsAdminAuthenticated(true);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('siteAdminAuthenticated', 'true');
+        window.location.href = '/admin';
+      }
+      return;
+    }
+
     const searchedUsers = users.length ? users : [];
     const matchedAccount = searchedUsers.find(
       (user) => user.email.toLowerCase() === loginEmail.trim().toLowerCase()
