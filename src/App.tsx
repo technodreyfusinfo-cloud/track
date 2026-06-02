@@ -1,4 +1,4 @@
-import { useState, FormEvent, ChangeEvent } from 'react';
+import { useState, FormEvent, ChangeEvent, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   INITIAL_RECENT_BACKERS, 
@@ -7,20 +7,20 @@ import {
   LAUNCH_COST
 } from './data';
 import { Backer } from './types';
-
-interface UserProfile {
-  name: string;
-  email: string;
-  dob: string;
-  profession: string;
-  photoUrl: string;
-}
-
-interface UserAccount extends UserProfile {
-  password: string;
-  createdAt: string;
-  mustChangePassword: boolean;
-}
+import {
+  UserAccount,
+  UserProfile,
+  ActivityRecord,
+  getUsers,
+  getUserByEmail,
+  getActivity,
+  loginUser,
+  createUser,
+  changePassword,
+  resetPassword,
+  updateUserProfile,
+  logActivity,
+} from './api';
 
 // Imported modular components
 import InteractiveSchema from './components/InteractiveSchema';
@@ -92,44 +92,8 @@ export default function App() {
   const [passwordChangeNew, setPasswordChangeNew] = useState<string>('');
   const [passwordChangeConfirm, setPasswordChangeConfirm] = useState<string>('');
   const [passwordChangeError, setPasswordChangeError] = useState<string>('');
-  const [users, setUsers] = useState<UserAccount[]>(() => {
-    if (typeof window === 'undefined') return [];
-    const rawUsers = localStorage.getItem('siteUsers');
-    if (rawUsers) {
-      try {
-        return JSON.parse(rawUsers);
-      } catch {
-        return [];
-      }
-    }
-    const storedProfile = localStorage.getItem('siteUserProfile');
-    const storedPassword = localStorage.getItem('siteUserPassword');
-    if (storedProfile && storedPassword) {
-      try {
-        const profileData: UserProfile = JSON.parse(storedProfile);
-        return [
-          {
-            ...profileData,
-            password: storedPassword,
-            createdAt: new Date().toISOString(),
-          },
-        ];
-      } catch {
-        return [];
-      }
-    }
-    return [];
-  });
-  const [userActivity, setUserActivity] = useState<{ email: string; action: string; time: string }[]>(() => {
-    if (typeof window === 'undefined') return [];
-    const rawActivity = localStorage.getItem('siteUserActivity');
-    if (!rawActivity) return [];
-    try {
-      return JSON.parse(rawActivity);
-    } catch {
-      return [];
-    }
-  });
+  const [users, setUsers] = useState<UserAccount[]>([]);
+  const [userActivity, setUserActivity] = useState<ActivityRecord[]>([]);
   const [currentUserEmail, setCurrentUserEmail] = useState<string>(() => {
     if (typeof window === 'undefined') return '';
     return localStorage.getItem('siteCurrentUserEmail') || '';
@@ -166,24 +130,49 @@ export default function App() {
 
   const saveUsers = (nextUsers: UserAccount[]) => {
     setUsers(nextUsers);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('siteUsers', JSON.stringify(nextUsers));
-    }
   };
 
-  const saveUserActivity = (nextActivity: { email: string; action: string; time: string }[]) => {
+  const saveUserActivity = (nextActivity: ActivityRecord[]) => {
     setUserActivity(nextActivity);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('siteUserActivity', JSON.stringify(nextActivity));
-    }
   };
 
   const logUserActivity = (email: string, action: string) => {
     const nextActivity = [
-      { email, action, time: new Date().toLocaleString('fr-FR') },
+      { email, action, createdAt: new Date().toLocaleString('fr-FR') },
       ...userActivity,
     ].slice(0, 50);
     saveUserActivity(nextActivity);
+    logActivity(email, action).catch(() => {
+      // Ignorer l'erreur backend si le serveur n'est pas disponible.
+    });
+  };
+
+  const loadUsers = async () => {
+    try {
+      const allUsers = await getUsers();
+      saveUsers(allUsers);
+    } catch {
+      // Backend inaccessible ou erreur API.
+    }
+  };
+
+  const loadActivityList = async () => {
+    try {
+      const activityList = await getActivity();
+      saveUserActivity(activityList);
+    } catch {
+      // Backend inaccessible ou erreur API.
+    }
+  };
+
+  const loadCurrentProfile = async (email: string) => {
+    try {
+      const user = await getUserByEmail(email);
+      setProfile(user);
+      setProfileDraft(user);
+    } catch {
+      // Profil introuvable, rester sur l'état actuel.
+    }
   };
 
   const saveCurrentUserEmail = (email: string) => {
@@ -192,6 +181,17 @@ export default function App() {
       localStorage.setItem('siteCurrentUserEmail', email);
     }
   };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (currentUserEmail) {
+      loadCurrentProfile(currentUserEmail);
+    }
+    if (isAdminAuthenticated) {
+      loadUsers();
+      loadActivityList();
+    }
+  }, [currentUserEmail, isAdminAuthenticated]);
 
   const ADMIN_EMAIL = 'admin@admin.com';
   const ADMIN_PASSWORD = 'Admin@123';
@@ -241,15 +241,16 @@ export default function App() {
     if (file) {
       const reader = new FileReader();
       reader.onload = () => {
-        if (typeof reader.result === 'string') {
-          setProfileDraft((prev: UserProfile) => ({ ...prev, photoUrl: reader.result }));
+        const result = reader.result;
+        if (typeof result === 'string') {
+          setProfileDraft((prev: UserProfile) => ({ ...prev, photoUrl: result }));
         }
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const handleRegisterSubmit = (e: FormEvent) => {
+  const handleRegisterSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
     if (!registerName.trim() || !registerEmail.trim() || !registerPassword.trim() || !registerDob.trim() || !registerProfession.trim()) {
@@ -265,38 +266,33 @@ export default function App() {
       return;
     }
 
-    const newProfile: UserProfile = {
-      name: registerName.trim(),
-      email: registerEmail.trim(),
-      dob: registerDob,
-      profession: registerProfession.trim(),
-      photoUrl: registerPhotoUrl,
-    };
+    try {
+      await createUser({
+        name: registerName.trim(),
+        email: registerEmail.trim(),
+        dob: registerDob,
+        profession: registerProfession.trim(),
+        photoUrl: registerPhotoUrl,
+        password: registerPassword,
+      });
 
-    const existingUser = users.find((user) => user.email.toLowerCase() === newProfile.email.toLowerCase());
-    if (existingUser) {
-      setRegisterError('Un compte existe déjà avec cette adresse email.');
-      return;
+      logUserActivity(registerEmail.trim(), 'Compte utilisateur créé par l’administrateur');
+      if (isAdminAuthenticated) {
+        const updatedUsers = await getUsers();
+        saveUsers(updatedUsers);
+      }
+
+      setRegisterName('');
+      setRegisterEmail('');
+      setRegisterPassword('');
+      setRegisterDob('');
+      setRegisterProfession('');
+      setRegisterPhotoUrl('');
+      setRegisterError('');
+    } catch (error: any) {
+      setRegisterError(error?.message || 'Impossible de créer le compte utilisateur.');
     }
-
-    const newAccount: UserAccount = {
-      ...newProfile,
-      password: registerPassword,
-      createdAt: new Date().toLocaleString('fr-FR'),
-      mustChangePassword: true,
-    };
-
-    saveUsers([newAccount, ...users]);
-    logUserActivity(newProfile.email, 'Compte utilisateur créé par l’administrateur');
-
-    setRegisterName('');
-    setRegisterEmail('');
-    setRegisterPassword('');
-    setRegisterDob('');
-    setRegisterProfession('');
-    setRegisterPhotoUrl('');
-    setRegisterError('');
-  }; 
+  };
 
 
   const handleLogout = () => {
@@ -313,7 +309,7 @@ export default function App() {
     }
   };
 
-  const handleLoginSubmit = (e: FormEvent) => {
+  const handleLoginSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setLoginError('');
 
@@ -331,50 +327,31 @@ export default function App() {
       return;
     }
 
-    const searchedUsers = users.length ? users : [];
-    const matchedAccount = searchedUsers.find(
-      (user) => user.email.toLowerCase() === loginEmail.trim().toLowerCase()
-    );
+    try {
+      const { user, mustChangePassword } = await loginUser(loginEmail.trim(), loginPassword);
+      setProfile(user);
+      setProfileDraft(user);
+      setCurrentUserEmail(user.email);
+      saveCurrentUserEmail(user.email);
 
-    if (!matchedAccount) {
-      setLoginError('Aucun compte trouvé avec cet email.');
-      return;
-    }
+      if (mustChangePassword) {
+        setPasswordChangeEmail(user.email);
+        setPasswordChangeError('');
+        setLoginEmail('');
+        setLoginPassword('');
+        return;
+      }
 
-    if (matchedAccount.password !== loginPassword) {
-      setLoginError('Email ou mot de passe incorrect.');
-      return;
-    }
-
-    const profileData: UserProfile = {
-      name: matchedAccount.name,
-      email: matchedAccount.email,
-      dob: matchedAccount.dob,
-      profession: matchedAccount.profession,
-      photoUrl: matchedAccount.photoUrl,
-    };
-
-    if (matchedAccount.mustChangePassword) {
-      setProfile(profileData);
-      setProfileDraft(profileData);
-      setPasswordChangeEmail(matchedAccount.email);
-      setPasswordChangeError('');
+      setIsRegistered(true);
+      logUserActivity(user.email, 'Connexion');
       setLoginEmail('');
       setLoginPassword('');
-      return;
-    }
-
-    setProfile(profileData);
-    setProfileDraft(profileData);
-    setIsRegistered(true);
-    saveCurrentUserEmail(profileData.email);
-    logUserActivity(profileData.email, 'Connexion');
-    setLoginEmail('');
-    setLoginPassword('');
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('siteAccountCreated', 'true');
-      localStorage.setItem('siteUserProfile', JSON.stringify(profileData));
-      localStorage.setItem('siteUserPassword', matchedAccount.password);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('siteAccountCreated', 'true');
+        localStorage.setItem('siteUserProfile', JSON.stringify(user));
+      }
+    } catch (error: any) {
+      setLoginError(error?.message || 'Échec de la connexion.');
     }
   };
 
@@ -384,21 +361,28 @@ export default function App() {
     setShowProfileMenu(false);
   };
 
-  const handleSaveProfile = () => {
+  const handleSaveProfile = async () => {
     const oldEmail = currentUserEmail || profile.email;
-    setProfile(profileDraft);
-    setIsEditingProfile(false);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('siteUserProfile', JSON.stringify(profileDraft));
+    try {
+      const updatedUser = await updateUserProfile(oldEmail, profileDraft);
+      setProfile(updatedUser);
+      setProfileDraft(updatedUser);
+      setIsEditingProfile(false);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('siteUserProfile', JSON.stringify(updatedUser));
+      }
+      if (oldEmail.toLowerCase() !== updatedUser.email.toLowerCase()) {
+        saveCurrentUserEmail(updatedUser.email);
+      }
       const updatedUsers = users.map((user) =>
         user.email.toLowerCase() === oldEmail.toLowerCase()
-          ? { ...user, ...profileDraft }
+          ? { ...user, ...updatedUser }
           : user
       );
       saveUsers(updatedUsers);
-      if (oldEmail.toLowerCase() !== profileDraft.email.toLowerCase()) {
-        saveCurrentUserEmail(profileDraft.email);
-      }
+      logUserActivity(updatedUser.email, 'Profil utilisateur modifié');
+    } catch (error: any) {
+      console.error('Impossible de mettre à jour le profil:', error?.message || error);
     }
   };
 
@@ -442,7 +426,7 @@ export default function App() {
     setAdminResetSuccess('');
   };
 
-  const handleAdminConfirmReset = (e: FormEvent) => {
+  const handleAdminConfirmReset = async (e: FormEvent) => {
     e.preventDefault();
     if (!adminResetTarget) {
       setAdminResetError('Veuillez sélectionner un utilisateur.');
@@ -457,23 +441,23 @@ export default function App() {
       return;
     }
 
-    const updatedUsers = users.map((user) =>
-      user.email.toLowerCase() === adminResetTarget.toLowerCase()
-        ? { ...user, password: adminResetPassword, mustChangePassword: true }
-        : user
-    );
-
-    saveUsers(updatedUsers);
-    setAdminResetSuccess('Mot de passe réinitialisé. L’utilisateur devra le changer à sa prochaine connexion.');
-    setAdminResetError('');
-    setAdminResetTarget('');
-    setAdminResetPassword('');
-
-    const targetEmail = adminResetTarget;
-    logUserActivity(targetEmail, 'Mot de passe administrateur réinitialisé');
+    try {
+      await resetPassword(adminResetTarget, adminResetPassword);
+      setAdminResetSuccess('Mot de passe réinitialisé. L’utilisateur devra le changer à sa prochaine connexion.');
+      setAdminResetError('');
+      setAdminResetTarget('');
+      setAdminResetPassword('');
+      if (isAdminAuthenticated) {
+        const updatedUsers = await getUsers();
+        saveUsers(updatedUsers);
+      }
+      logUserActivity(adminResetTarget, 'Mot de passe administrateur réinitialisé');
+    } catch (error: any) {
+      setAdminResetError(error?.message || 'Impossible de réinitialiser le mot de passe.');
+    }
   };
 
-  const handlePasswordChangeSubmit = (e: FormEvent) => {
+  const handlePasswordChangeSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setPasswordChangeError('');
 
@@ -490,41 +474,25 @@ export default function App() {
       return;
     }
 
-    const updatedUsers = users.map((user) =>
-      user.email.toLowerCase() === passwordChangeEmail.toLowerCase()
-        ? { ...user, password: passwordChangeNew, mustChangePassword: false }
-        : user
-    );
+    try {
+      await changePassword(passwordChangeEmail, passwordChangeNew);
+      const updatedUser = await getUserByEmail(passwordChangeEmail);
 
-    saveUsers(updatedUsers);
-
-    const updatedUser = updatedUsers.find(
-      (user) => user.email.toLowerCase() === passwordChangeEmail.toLowerCase()
-    );
-
-    if (updatedUser) {
-      const profileData: UserProfile = {
-        name: updatedUser.name,
-        email: updatedUser.email,
-        dob: updatedUser.dob,
-        profession: updatedUser.profession,
-        photoUrl: updatedUser.photoUrl,
-      };
-      setProfile(profileData);
-      setProfileDraft(profileData);
+      setProfile(updatedUser);
+      setProfileDraft(updatedUser);
       setIsRegistered(true);
       saveCurrentUserEmail(updatedUser.email);
       if (typeof window !== 'undefined') {
         localStorage.setItem('siteAccountCreated', 'true');
-        localStorage.setItem('siteUserProfile', JSON.stringify(profileData));
-        localStorage.setItem('siteUserPassword', passwordChangeNew);
+        localStorage.setItem('siteUserProfile', JSON.stringify(updatedUser));
       }
       logUserActivity(updatedUser.email, 'Modification du mot de passe');
+      setPasswordChangeEmail('');
+      setPasswordChangeNew('');
+      setPasswordChangeConfirm('');
+    } catch (error: any) {
+      setPasswordChangeError(error?.message || 'Impossible de modifier le mot de passe.');
     }
-
-    setPasswordChangeEmail('');
-    setPasswordChangeNew('');
-    setPasswordChangeConfirm('');
   };
 
   // Handle Contact Form Submission
@@ -826,7 +794,7 @@ export default function App() {
                       <div key={`${event.email}-${index}`} className="rounded-2xl bg-slate-900 p-4">
                         <div className="flex items-center justify-between gap-3">
                           <span className="text-sm text-slate-300">{event.email}</span>
-                          <span className="text-xs text-slate-500">{event.time}</span>
+                          <span className="text-xs text-slate-500">{event.createdAt}</span>
                         </div>
                         <p className="mt-2 text-sm text-slate-200">{event.action}</p>
                       </div>
