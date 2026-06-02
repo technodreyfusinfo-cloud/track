@@ -7,7 +7,7 @@ export interface UserProfile {
 }
 
 export interface UserAccount extends UserProfile {
-  password?: string;
+  password: string;
   createdAt: string;
   mustChangePassword: boolean;
 }
