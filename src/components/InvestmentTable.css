@@ -350,6 +350,12 @@
   .investment-table td {
     padding: 0.75rem 0.5rem;
     font-size: 0.85rem;
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .investment-table {
+    min-width: 720px;
   }
 
   .input-group {
@@ -363,6 +369,7 @@
 
   .table-wrapper {
     font-size: 0.9rem;
+    overflow-x: auto;
   }
 
   .result-table {
