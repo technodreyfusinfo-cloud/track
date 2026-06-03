@@ -1,31 +1,18 @@
-import { useState, FormEvent, ChangeEvent, useEffect } from 'react';
+import { useState, FormEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   INITIAL_RECENT_BACKERS, 
+  CONTRIBUTION_TIERS, 
   TESTIMONIES,
   FUNDING_PROGRESS,
   LAUNCH_COST
 } from './data';
 import { Backer } from './types';
-import {
-  UserAccount,
-  UserProfile,
-  ActivityRecord,
-  getUsers,
-  getUserByEmail,
-  getActivity,
-  loginUser,
-  createUser,
-  changePassword,
-  resetPassword,
-  updateUserProfile,
-  logActivity,
-} from './api';
 
 // Imported modular components
 import InteractiveSchema from './components/InteractiveSchema';
 import BudgetChart from './components/BudgetChart';
-import FundingDashboard from './components/FundingDashboard';
+import ContributionWidget from './components/ContributionWidget';
 import { InvestmentTable } from './components/InvestmentTable';
 
 // Lucide icon assets
@@ -60,6 +47,7 @@ export default function App() {
   const [backersList, setBackersList] = useState<Backer[]>(INITIAL_RECENT_BACKERS);
   const [hasContributed, setHasContributed] = useState<boolean>(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [showMobileMenu, setShowMobileMenu] = useState<boolean>(false);
 
   // Simulated QA & Contact forms state
   const [contactName, setContactName] = useState<string>('');
@@ -68,139 +56,10 @@ export default function App() {
   const [contactSubmitting, setContactSubmitting] = useState<boolean>(false);
   const [contactSuccess, setContactSuccess] = useState<boolean>(false);
 
-  // Account gate state
-  const [registerName, setRegisterName] = useState<string>('');
-  const [registerEmail, setRegisterEmail] = useState<string>('');
-  const [registerPassword, setRegisterPassword] = useState<string>('');
-  const [registerDob, setRegisterDob] = useState<string>('');
-  const [registerProfession, setRegisterProfession] = useState<string>('');
-  const [registerPhotoUrl, setRegisterPhotoUrl] = useState<string>('');
-  const [registerError, setRegisterError] = useState<string>('');
-
-  const [adminEmail, setAdminEmail] = useState<string>('');
-  const [adminPassword, setAdminPassword] = useState<string>('');
-  const [adminError, setAdminError] = useState<string>('');
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return localStorage.getItem('siteAdminAuthenticated') === 'true';
-  });
-  const [adminResetTarget, setAdminResetTarget] = useState<string>('');
-  const [adminResetPassword, setAdminResetPassword] = useState<string>('');
-  const [adminResetError, setAdminResetError] = useState<string>('');
-  const [adminResetSuccess, setAdminResetSuccess] = useState<string>('');
-  const [passwordChangeEmail, setPasswordChangeEmail] = useState<string>('');
-  const [passwordChangeNew, setPasswordChangeNew] = useState<string>('');
-  const [passwordChangeConfirm, setPasswordChangeConfirm] = useState<string>('');
-  const [passwordChangeError, setPasswordChangeError] = useState<string>('');
-  const [users, setUsers] = useState<UserAccount[]>([]);
-  const [userActivity, setUserActivity] = useState<ActivityRecord[]>([]);
-  const [currentUserEmail, setCurrentUserEmail] = useState<string>(() => {
-    if (typeof window === 'undefined') return '';
-    return localStorage.getItem('siteCurrentUserEmail') || '';
-  });
-
-  // Login state
-  const [isLoginMode, setIsLoginMode] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('siteUserProfile');
-      return stored ? true : false;
-    }
-    return false;
-  });
-  const [loginEmail, setLoginEmail] = useState<string>('');
-  const [loginPassword, setLoginPassword] = useState<string>('');
-  const [loginError, setLoginError] = useState<string>('');
-
-  const storedProfile = typeof window !== 'undefined' ? localStorage.getItem('siteUserProfile') : null;
-  const initialProfile: UserProfile = storedProfile
-    ? JSON.parse(storedProfile)
-    : { name: '', email: '', dob: '', profession: '', photoUrl: '' };
-
-  const [profile, setProfile] = useState<UserProfile>(initialProfile);
-  const [isRegistered, setIsRegistered] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('siteAccountCreated') === 'true';
-    }
-    return false;
-  });
-  const [showProfileMenu, setShowProfileMenu] = useState<boolean>(false);
-  const [isEditingProfile, setIsEditingProfile] = useState<boolean>(false);
-  const [profileDraft, setProfileDraft] = useState<UserProfile>(initialProfile);
-  const isAdminRoute = typeof window !== 'undefined' && window.location.pathname === '/admin';
-
-  const saveUsers = (nextUsers: UserAccount[]) => {
-    setUsers(nextUsers);
-  };
-
-  const saveUserActivity = (nextActivity: ActivityRecord[]) => {
-    setUserActivity(nextActivity);
-  };
-
-  const logUserActivity = (email: string, action: string) => {
-    const nextActivity = [
-      { email, action, createdAt: new Date().toLocaleString('fr-FR') },
-      ...userActivity,
-    ].slice(0, 50);
-    saveUserActivity(nextActivity);
-    logActivity(email, action).catch(() => {
-      // Ignorer l'erreur backend si le serveur n'est pas disponible.
-    });
-  };
-
-  const loadUsers = async () => {
-    try {
-      const allUsers = await getUsers();
-      saveUsers(allUsers);
-    } catch {
-      // Backend inaccessible ou erreur API.
-    }
-  };
-
-  const loadActivityList = async () => {
-    try {
-      const activityList = await getActivity();
-      saveUserActivity(activityList);
-    } catch {
-      // Backend inaccessible ou erreur API.
-    }
-  };
-
-  const loadCurrentProfile = async (email: string) => {
-    try {
-      const user = await getUserByEmail(email);
-      setProfile(user);
-      setProfileDraft(user);
-    } catch {
-      // Profil introuvable, rester sur l'état actuel.
-    }
-  };
-
-  const saveCurrentUserEmail = (email: string) => {
-    setCurrentUserEmail(email);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('siteCurrentUserEmail', email);
-    }
-  };
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (currentUserEmail) {
-      loadCurrentProfile(currentUserEmail);
-    }
-    if (isAdminAuthenticated) {
-      loadUsers();
-      loadActivityList();
-    }
-  }, [currentUserEmail, isAdminAuthenticated]);
-
-  const ADMIN_EMAIL = 'admin@admin.com';
-  const ADMIN_PASSWORD = 'Admin@123';
-
   // Compute stats
   const backersCount = 12 + (backersList.length - INITIAL_RECENT_BACKERS.length);
   const rawPercentage = (raisedAmount / CAMPAGNE_GOAL) * 100;
   const percentage = Math.min(100, Math.round(rawPercentage * 10) / 10);
-  const remainingAmount = Math.max(0, CAMPAGNE_GOAL - raisedAmount);
 
   const formatFCFA = (val: number) => {
     return new Intl.NumberFormat('fr-FR').format(val) + ' FCFA';
@@ -209,290 +68,34 @@ export default function App() {
   const launchCost = LAUNCH_COST;
   const launchCostShare = Math.round((launchCost / CAMPAGNE_GOAL) * 100);
 
+  // Callback to handle successful simulation donation
+  const handleContributionAdded = (amount: number, name: string) => {
+    setRaisedAmount((prev) => prev + amount);
+    
+    // Add to top of backer ticker
+    const newBacker: Backer = {
+      id: `backer-custom-${Date.now()}`,
+      name,
+      amount,
+      time: "À l'instant",
+      badge: amount >= 150000 ? 'Platine' : amount >= 50000 ? 'Or' : amount >= 15000 ? 'Argent' : 'Bronze',
+      isCustom: true
+    };
+    
+    setBackersList((prev) => [newBacker, ...prev]);
+    setHasContributed(true);
+    
+    // Auto clear alert
+    setTimeout(() => {
+      setHasContributed(false);
+    }, 8000);
+  };
+
   // Copy to clipboard helper
   const handleCopyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     setCopiedField(label);
     setTimeout(() => setCopiedField(null), 2000);
-  };
-
-  const scrollToSimulator = () => {
-    const el = document.getElementById('investment');
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  };
-
-  const handleRegisterPhoto = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result === 'string') {
-          setRegisterPhotoUrl(reader.result);
-        }
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleEditPhoto = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result;
-        if (typeof result === 'string') {
-          setProfileDraft((prev: UserProfile) => ({ ...prev, photoUrl: result }));
-        }
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleRegisterSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-
-    if (!registerName.trim() || !registerEmail.trim() || !registerPassword.trim() || !registerDob.trim() || !registerProfession.trim()) {
-      setRegisterError('Veuillez renseigner tous les champs obligatoires.');
-      return;
-    }
-    if (!registerEmail.includes('@')) {
-      setRegisterError('Veuillez saisir une adresse email valide.');
-      return;
-    }
-    if (registerPassword.length < 6) {
-      setRegisterError('Le mot de passe doit contenir au moins 6 caractères.');
-      return;
-    }
-
-    try {
-      await createUser({
-        name: registerName.trim(),
-        email: registerEmail.trim(),
-        dob: registerDob,
-        profession: registerProfession.trim(),
-        photoUrl: registerPhotoUrl,
-        password: registerPassword,
-      });
-
-      logUserActivity(registerEmail.trim(), 'Compte utilisateur créé par l’administrateur');
-      if (isAdminAuthenticated) {
-        const updatedUsers = await getUsers();
-        saveUsers(updatedUsers);
-      }
-
-      setRegisterName('');
-      setRegisterEmail('');
-      setRegisterPassword('');
-      setRegisterDob('');
-      setRegisterProfession('');
-      setRegisterPhotoUrl('');
-      setRegisterError('');
-    } catch (error: any) {
-      setRegisterError(error?.message || 'Impossible de créer le compte utilisateur.');
-    }
-  };
-
-
-  const handleLogout = () => {
-    const logoutEmail = currentUserEmail || profile.email;
-    if (logoutEmail) {
-      logUserActivity(logoutEmail, 'Déconnexion');
-    }
-    setIsRegistered(false);
-    setShowProfileMenu(false);
-    setCurrentUserEmail('');
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('siteAccountCreated');
-      localStorage.removeItem('siteCurrentUserEmail');
-    }
-  };
-
-  const handleLoginSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setLoginError('');
-
-    if (!loginEmail.trim() || !loginPassword.trim()) {
-      setLoginError('Veuillez renseigner votre email et votre mot de passe.');
-      return;
-    }
-
-    if (loginEmail.trim().toLowerCase() === ADMIN_EMAIL && loginPassword === ADMIN_PASSWORD) {
-      setIsAdminAuthenticated(true);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('siteAdminAuthenticated', 'true');
-        window.location.href = '/admin';
-      }
-      return;
-    }
-
-    try {
-      const { user, mustChangePassword } = await loginUser(loginEmail.trim(), loginPassword);
-      setProfile(user);
-      setProfileDraft(user);
-      setCurrentUserEmail(user.email);
-      saveCurrentUserEmail(user.email);
-
-      if (mustChangePassword) {
-        setPasswordChangeEmail(user.email);
-        setPasswordChangeError('');
-        setLoginEmail('');
-        setLoginPassword('');
-        return;
-      }
-
-      setIsRegistered(true);
-      logUserActivity(user.email, 'Connexion');
-      setLoginEmail('');
-      setLoginPassword('');
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('siteAccountCreated', 'true');
-        localStorage.setItem('siteUserProfile', JSON.stringify(user));
-      }
-    } catch (error: any) {
-      setLoginError(error?.message || 'Échec de la connexion.');
-    }
-  };
-
-  const handleOpenEditProfile = () => {
-    setProfileDraft(profile);
-    setIsEditingProfile(true);
-    setShowProfileMenu(false);
-  };
-
-  const handleSaveProfile = async () => {
-    const oldEmail = currentUserEmail || profile.email;
-    try {
-      const updatedUser = await updateUserProfile(oldEmail, profileDraft);
-      setProfile(updatedUser);
-      setProfileDraft(updatedUser);
-      setIsEditingProfile(false);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('siteUserProfile', JSON.stringify(updatedUser));
-      }
-      if (oldEmail.toLowerCase() !== updatedUser.email.toLowerCase()) {
-        saveCurrentUserEmail(updatedUser.email);
-      }
-      const updatedUsers = users.map((user) =>
-        user.email.toLowerCase() === oldEmail.toLowerCase()
-          ? { ...user, ...updatedUser }
-          : user
-      );
-      saveUsers(updatedUsers);
-      logUserActivity(updatedUser.email, 'Profil utilisateur modifié');
-    } catch (error: any) {
-      console.error('Impossible de mettre à jour le profil:', error?.message || error);
-    }
-  };
-
-  const handleAdminLoginSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    setAdminError('');
-
-    if (!adminEmail.trim() || !adminPassword.trim()) {
-      setAdminError('Veuillez saisir vos identifiants administrateur.');
-      return;
-    }
-
-    if (adminEmail !== ADMIN_EMAIL || adminPassword !== ADMIN_PASSWORD) {
-      setAdminError('Email ou mot de passe administrateur incorrect.');
-      return;
-    }
-
-    setIsAdminAuthenticated(true);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('siteAdminAuthenticated', 'true');
-    }
-  };
-
-  const handleAdminLogout = () => {
-    setIsAdminAuthenticated(false);
-    setAdminEmail('');
-    setAdminPassword('');
-    setAdminResetTarget('');
-    setAdminResetPassword('');
-    setAdminResetError('');
-    setAdminResetSuccess('');
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('siteAdminAuthenticated');
-    }
-  };
-
-  const handleAdminStartReset = (email: string) => {
-    setAdminResetTarget(email);
-    setAdminResetPassword('');
-    setAdminResetError('');
-    setAdminResetSuccess('');
-  };
-
-  const handleAdminConfirmReset = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!adminResetTarget) {
-      setAdminResetError('Veuillez sélectionner un utilisateur.');
-      return;
-    }
-    if (!adminResetPassword.trim()) {
-      setAdminResetError('Veuillez saisir un nouveau mot de passe.');
-      return;
-    }
-    if (adminResetPassword.length < 6) {
-      setAdminResetError('Le mot de passe doit contenir au moins 6 caractères.');
-      return;
-    }
-
-    try {
-      await resetPassword(adminResetTarget, adminResetPassword);
-      setAdminResetSuccess('Mot de passe réinitialisé. L’utilisateur devra le changer à sa prochaine connexion.');
-      setAdminResetError('');
-      setAdminResetTarget('');
-      setAdminResetPassword('');
-      if (isAdminAuthenticated) {
-        const updatedUsers = await getUsers();
-        saveUsers(updatedUsers);
-      }
-      logUserActivity(adminResetTarget, 'Mot de passe administrateur réinitialisé');
-    } catch (error: any) {
-      setAdminResetError(error?.message || 'Impossible de réinitialiser le mot de passe.');
-    }
-  };
-
-  const handlePasswordChangeSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setPasswordChangeError('');
-
-    if (!passwordChangeNew.trim() || !passwordChangeConfirm.trim()) {
-      setPasswordChangeError('Veuillez renseigner le nouveau mot de passe et la confirmation.');
-      return;
-    }
-    if (passwordChangeNew !== passwordChangeConfirm) {
-      setPasswordChangeError('Les mots de passe ne correspondent pas.');
-      return;
-    }
-    if (passwordChangeNew.length < 6) {
-      setPasswordChangeError('Le mot de passe doit contenir au moins 6 caractères.');
-      return;
-    }
-
-    try {
-      await changePassword(passwordChangeEmail, passwordChangeNew);
-      const updatedUser = await getUserByEmail(passwordChangeEmail);
-
-      setProfile(updatedUser);
-      setProfileDraft(updatedUser);
-      setIsRegistered(true);
-      saveCurrentUserEmail(updatedUser.email);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('siteAccountCreated', 'true');
-        localStorage.setItem('siteUserProfile', JSON.stringify(updatedUser));
-      }
-      logUserActivity(updatedUser.email, 'Modification du mot de passe');
-      setPasswordChangeEmail('');
-      setPasswordChangeNew('');
-      setPasswordChangeConfirm('');
-    } catch (error: any) {
-      setPasswordChangeError(error?.message || 'Impossible de modifier le mot de passe.');
-    }
   };
 
   // Handle Contact Form Submission
@@ -511,417 +114,13 @@ export default function App() {
     }, 1500);
   };
 
-  if (isAdminRoute) {
-    return (
-      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center px-4 py-10">
-        <div className="w-full max-w-4xl bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl p-8">
-          {!isAdminAuthenticated ? (
-            <div>
-              <div className="text-center mb-8">
-                <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-brand-green/10 text-brand-green mb-4">
-                  <ShieldCheck className="w-6 h-6" />
-                </span>
-                <h1 className="text-2xl font-extrabold text-white">Admin Dashboard</h1>
-                <p className="text-slate-400 text-sm mt-3">Connectez-vous pour gérer les comptes utilisateurs et suivre les connexions.</p>
-              </div>
-
-              {adminError && (
-                <div className="mb-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-300 px-4 py-3 text-sm">
-                  {adminError}
-                </div>
-              )}
-
-              <form onSubmit={handleAdminLoginSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-2">Email administrateur</label>
-                  <input
-                    type="email"
-                    value={adminEmail}
-                    onChange={(e) => setAdminEmail(e.target.value)}
-                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-brand-green"
-                    placeholder="admin@admin.com"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-2">Mot de passe</label>
-                  <input
-                    type="password"
-                    value={adminPassword}
-                    onChange={(e) => setAdminPassword(e.target.value)}
-                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-brand-green"
-                    placeholder="Mot de passe admin"
-                  />
-                </div>
-                <button type="submit" className="w-full rounded-2xl bg-brand-green px-4 py-3 text-sm font-bold text-slate-950 hover:bg-brand-green/90 transition-all">
-                  Se connecter en tant qu'admin
-                </button>
-                <button
-                  type="button"
-                  onClick={() => (window.location.href = '/')}
-                  className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-200 hover:bg-slate-800 transition-all"
-                >
-                  Retour au site public
-                </button>
-              </form>
-            </div>
-          ) : (
-            <div>
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-                <div>
-                  <h1 className="text-2xl font-extrabold text-white">Tableau de bord administrateur</h1>
-                  <p className="text-slate-400 text-sm mt-2">Gestion des comptes utilisateurs et suivi des connexions.</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleAdminLogout}
-                  className="inline-flex items-center rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-bold text-slate-200 hover:bg-slate-800 transition-all"
-                >
-                  Déconnexion admin
-                </button>
-              </div>
-
-              {(adminResetSuccess || adminResetError) && (
-                <div className="mb-6 space-y-3">
-                  {adminResetSuccess && (
-                    <div className="rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-200 px-4 py-3 text-sm">
-                      {adminResetSuccess}
-                    </div>
-                  )}
-                  {adminResetError && (
-                    <div className="rounded-2xl bg-red-500/10 border border-red-500/20 text-red-300 px-4 py-3 text-sm">
-                      {adminResetError}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className="rounded-3xl border border-slate-700 bg-slate-950 p-6 mb-6">
-                <h2 className="text-lg font-semibold text-white mb-4">Créer un compte utilisateur</h2>
-                {registerError && (
-                  <div className="mb-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-300 px-4 py-3 text-sm">
-                    {registerError}
-                  </div>
-                )}
-                <p className="text-slate-400 text-sm mb-4">
-                  Le mot de passe est temporaire. L’utilisateur devra le changer à sa première connexion.
-                </p>
-                <form onSubmit={handleRegisterSubmit} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-2">Nom complet</label>
-                    <input
-                      value={registerName}
-                      onChange={(e) => setRegisterName(e.target.value)}
-                      className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-brand-green"
-                      placeholder="Nom complet"
-                      type="text"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-2">Adresse email</label>
-                    <input
-                      value={registerEmail}
-                      onChange={(e) => setRegisterEmail(e.target.value)}
-                      className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-brand-green"
-                      placeholder="email@exemple.com"
-                      type="email"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-2">Mot de passe temporaire</label>
-                    <input
-                      value={registerPassword}
-                      onChange={(e) => setRegisterPassword(e.target.value)}
-                      className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-brand-green"
-                      placeholder="Au moins 6 caractères"
-                      type="password"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-300 mb-2">Date de naissance</label>
-                      <input
-                        value={registerDob}
-                        onChange={(e) => setRegisterDob(e.target.value)}
-                        className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-brand-green"
-                        type="date"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-300 mb-2">Profession</label>
-                      <input
-                        value={registerProfession}
-                        onChange={(e) => setRegisterProfession(e.target.value)}
-                        className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-brand-green"
-                        placeholder="Ex: Enseignant, Entrepreneur, Parent"
-                        type="text"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-2">Photo de profil (optionnelle)</label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleRegisterPhoto}
-                      className="w-full text-slate-200 text-sm file:rounded-full file:border-0 file:bg-brand-green file:px-4 file:py-2 file:text-slate-950"
-                    />
-                    {registerPhotoUrl && (
-                      <img src={registerPhotoUrl} alt="Aperçu photo" className="mt-3 h-24 w-24 rounded-full object-cover border border-slate-700" />
-                    )}
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="w-full rounded-2xl bg-brand-green px-4 py-3 text-sm font-bold text-slate-950 hover:bg-brand-green/90 transition-all"
-                  >
-                    Créer le compte utilisateur
-                  </button>
-                </form>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2 mb-6">
-                <div className="rounded-3xl border border-slate-700 bg-slate-950 p-5">
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Utilisateurs enregistrés</p>
-                  <p className="text-3xl font-bold mt-4 text-white">{users.length}</p>
-                </div>
-                <div className="rounded-3xl border border-slate-700 bg-slate-950 p-5">
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Événements récents</p>
-                  <p className="text-3xl font-bold mt-4 text-white">{userActivity.length}</p>
-                </div>
-              </div>
-
-              <div className="rounded-3xl border border-slate-700 bg-slate-950 p-6 mb-6">
-                <h2 className="text-lg font-semibold text-white mb-4">Comptes utilisateurs</h2>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-left text-sm text-slate-300">
-                    <thead>
-                      <tr>
-                        <th className="px-3 py-2 font-semibold">Nom</th>
-                        <th className="px-3 py-2 font-semibold">Email</th>
-                        <th className="px-3 py-2 font-semibold">Profession</th>
-                        <th className="px-3 py-2 font-semibold">Créé le</th>
-                        <th className="px-3 py-2 font-semibold">État</th>
-                        <th className="px-3 py-2 font-semibold">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {users.map((user) => (
-                        <tr key={user.email} className="border-t border-slate-700">
-                          <td className="px-3 py-3">{user.name}</td>
-                          <td className="px-3 py-3">{user.email}</td>
-                          <td className="px-3 py-3">{user.profession}</td>
-                          <td className="px-3 py-3">{user.createdAt}</td>
-                          <td className="px-3 py-3">
-                            {user.mustChangePassword ? (
-                              <span className="rounded-full bg-amber-500/10 px-2 py-1 text-[11px] font-semibold text-amber-300">
-                                Changement requis
-                              </span>
-                            ) : (
-                              <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-300">
-                                OK
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-3 py-3">
-                            <div className="flex flex-col gap-2">
-                              {adminResetTarget === user.email ? (
-                                <form onSubmit={handleAdminConfirmReset} className="space-y-2">
-                                  <input
-                                    value={adminResetPassword}
-                                    onChange={(e) => setAdminResetPassword(e.target.value)}
-                                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-brand-green"
-                                    type="password"
-                                    placeholder="Nouveau mot de passe"
-                                  />
-                                  <div className="flex gap-2">
-                                    <button
-                                      type="submit"
-                                      className="rounded-xl bg-brand-green px-3 py-2 text-xs font-semibold text-slate-950 hover:bg-brand-green/90 transition-all"
-                                    >
-                                      Valider
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setAdminResetTarget('')}
-                                      className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800 transition-all"
-                                    >
-                                      Annuler
-                                    </button>
-                                  </div>
-                                </form>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => handleAdminStartReset(user.email)}
-                                  className="rounded-xl bg-blue-500/10 px-3 py-2 text-xs font-semibold text-blue-200 hover:bg-blue-500/20 transition-all"
-                                >
-                                  Réinitialiser
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const keptUsers = users.filter((item) => item.email !== user.email);
-                                  saveUsers(keptUsers);
-                                  if (currentUserEmail.toLowerCase() === user.email.toLowerCase()) {
-                                    handleLogout();
-                                  }
-                                }}
-                                className="rounded-xl bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200 hover:bg-red-500/20 transition-all"
-                              >
-                                Supprimer
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div className="rounded-3xl border border-slate-700 bg-slate-950 p-6">
-                <h2 className="text-lg font-semibold text-white mb-4">Journal de connexion</h2>
-                <div className="space-y-3">
-                  {userActivity.length === 0 ? (
-                    <p className="text-sm text-slate-400">Aucun événement enregistré.</p>
-                  ) : (
-                    userActivity.map((event, index) => (
-                      <div key={`${event.email}-${index}`} className="rounded-2xl bg-slate-900 p-4">
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-sm text-slate-300">{event.email}</span>
-                          <span className="text-xs text-slate-500">{event.createdAt}</span>
-                        </div>
-                        <p className="mt-2 text-sm text-slate-200">{event.action}</p>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  if (passwordChangeEmail) {
-    return (
-      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center px-4 py-10">
-        <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl p-8">
-          <div className="text-center mb-8">
-            <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-brand-green/10 text-brand-green mb-4">
-              <ShieldCheck className="w-6 h-6" />
-            </span>
-            <h1 className="text-2xl font-extrabold text-white">Changement de mot de passe</h1>
-            <p className="text-slate-400 text-sm mt-3">
-              Vous devez changer votre mot de passe avant de pouvoir accéder au site.
-            </p>
-          </div>
-
-          {passwordChangeError && (
-            <div className="mb-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-300 px-4 py-3 text-sm">
-              {passwordChangeError}
-            </div>
-          )}
-
-          <form onSubmit={handlePasswordChangeSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-2">Nouveau mot de passe</label>
-              <input
-                value={passwordChangeNew}
-                onChange={(e) => setPasswordChangeNew(e.target.value)}
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-brand-green"
-                placeholder="Nouveau mot de passe"
-                type="password"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-2">Confirmation du mot de passe</label>
-              <input
-                value={passwordChangeConfirm}
-                onChange={(e) => setPasswordChangeConfirm(e.target.value)}
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-brand-green"
-                placeholder="Confirmez le mot de passe"
-                type="password"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="w-full rounded-2xl bg-brand-green px-4 py-3 text-sm font-bold text-slate-950 hover:bg-brand-green/90 transition-all"
-            >
-              Valider le nouveau mot de passe
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
-  if (!isRegistered) {
-    return (
-      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center px-4 py-10">
-        <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl p-8">
-          <div className="text-center mb-8">
-            <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-brand-green/10 text-brand-green mb-4">
-              <ShieldCheck className="w-6 h-6" />
-            </span>
-            <h1 className="text-2xl font-extrabold text-white">Se connecter</h1>
-            <p className="text-slate-400 text-sm mt-3">
-              Connectez-vous avec votre email et mot de passe. La création de compte est réservée à l’administrateur.
-            </p>
-          </div>
-
-          {loginError && (
-            <div className="mb-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-300 px-4 py-3 text-sm">
-              {loginError}
-            </div>
-          )}
-
-          <form onSubmit={handleLoginSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-2">Adresse email</label>
-              <input
-                value={loginEmail}
-                onChange={(e) => setLoginEmail(e.target.value)}
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-brand-green"
-                placeholder="email@exemple.com"
-                type="email"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-2">Mot de passe</label>
-              <input
-                value={loginPassword}
-                onChange={(e) => setLoginPassword(e.target.value)}
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none focus:border-brand-green"
-                placeholder="Votre mot de passe"
-                type="password"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="w-full rounded-2xl bg-brand-green px-4 py-3 text-sm font-bold text-slate-950 hover:bg-brand-green/90 transition-all"
-            >
-              Se connecter
-            </button>
-          </form>
-
-          <p className="text-slate-500 text-xs text-center mt-6">
-            Les comptes sont créés uniquement par l’administrateur. Contactez un administrateur si vous n’avez pas encore d’accès.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  // Scroll smoothly to checkout component
+  const scrollToSimulator = () => {
+    const el = document.getElementById('simulateur');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800 antialiased selection:bg-brand-green/20 selection:text-brand-blue">
@@ -954,56 +153,16 @@ export default function App() {
             </div>
           </div>
 
-          <nav className="hidden lg:flex items-center gap-1 text-xs font-semibold text-slate-600 ml-6">
-            <a href="#probleme" className="px-2.5 py-1 rounded-lg hover:text-brand-blue hover:bg-brand-green/10 transition-colors">Le Problème</a>
-            <a href="#solution" className="px-2.5 py-1 rounded-lg hover:text-brand-blue hover:bg-brand-green/10 transition-colors">Notre Solution</a>
-            <a href="#pourquoi" className="px-2.5 py-1 rounded-lg hover:text-brand-blue hover:bg-brand-green/10 transition-colors">Pourquoi Investir ?</a>
-            <a href="#investment" className="px-2.5 py-1 rounded-lg hover:text-brand-blue hover:bg-brand-green/10 transition-colors">Revenus sur investissement</a>
-            <a href="#budget" className="px-2.5 py-1 rounded-lg hover:text-brand-blue hover:bg-brand-green/10 transition-colors">Financement</a>
-            <a href="#contact" className="px-2.5 py-1 rounded-lg hover:text-brand-blue hover:bg-brand-green/10 transition-colors">Transparence & Contact</a>
-          </nav>
-
-          <div className="flex items-center gap-3 relative">
-            {isRegistered && (
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setShowProfileMenu((prev) => !prev)}
-                  className="h-10 w-10 rounded-full border border-slate-200 bg-white flex items-center justify-center overflow-hidden shadow-sm cursor-pointer"
-                >
-                  {profile.photoUrl ? (
-                    <img src={profile.photoUrl} alt="Profil" className="h-full w-full object-cover" />
-                  ) : (
-                    <UserCheck className="w-5 h-5 text-slate-700" />
-                  )}
-                </button>
-
-                {showProfileMenu && (
-                  <div className="absolute right-0 mt-2 w-52 rounded-3xl bg-white border border-slate-200 shadow-xl text-slate-800 overflow-hidden z-50">
-                    <div className="px-4 py-3 border-b border-slate-200">
-                      <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Mon compte</p>
-                      <p className="font-semibold text-sm mt-2 truncate">{profile.name || 'Utilisateur'}</p>
-                      <p className="text-xs text-slate-500 truncate">{profile.email}</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleOpenEditProfile}
-                      className="w-full px-4 py-3 text-left text-sm hover:bg-slate-100"
-                    >
-                      Éditer le profil
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleLogout}
-                      className="w-full px-4 py-3 text-left text-sm text-rose-600 hover:bg-slate-100"
-                    >
-                      Déconnexion
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setShowMobileMenu((prev) => !prev)}
+              className="lg:hidden inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-slate-50 transition-colors"
+              aria-expanded={showMobileMenu}
+              aria-label="Ouvrir le menu mobile"
+            >
+              <span className="text-xl font-bold">☰</span>
+            </button>
             <button 
               onClick={scrollToSimulator}
               className="px-5 py-2.5 bg-brand-green hover:bg-brand-green/90 text-white hover:text-slate-900 rounded-xl text-xs font-bold transition-all shadow-xs hover:shadow-md cursor-pointer flex items-center gap-1.5"
@@ -1013,124 +172,17 @@ export default function App() {
             </button>
           </div>
         </div>
+        <div className={`lg:hidden ${showMobileMenu ? 'block' : 'hidden'} border-t border-slate-200 bg-white/95`}> 
+          <nav className="space-y-2 px-4 py-4">
+            <a href="#probleme" onClick={() => setShowMobileMenu(false)} className="block rounded-2xl px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Le Problème</a>
+            <a href="#solution" onClick={() => setShowMobileMenu(false)} className="block rounded-2xl px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Notre Solution</a>
+            <a href="#pourquoi" onClick={() => setShowMobileMenu(false)} className="block rounded-2xl px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Pourquoi Investir ?</a>
+            <a href="#budget" onClick={() => setShowMobileMenu(false)} className="block rounded-2xl px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Financement</a>
+            <a href="#impact" onClick={() => setShowMobileMenu(false)} className="block rounded-2xl px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Témoignages</a>
+            <a href="#contact" onClick={() => setShowMobileMenu(false)} className="block rounded-2xl px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Transparence & Contact</a>
+          </nav>
+        </div>
       </header>
-
-      {isEditingProfile && (
-        <section className="bg-slate-100 border-b border-slate-200 py-8">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6">
-            <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr] items-start">
-              <div className="space-y-4">
-                <div className="flex items-center gap-4">
-                  <div className="h-20 w-20 rounded-full bg-slate-300 overflow-hidden flex items-center justify-center">
-                    {profileDraft.photoUrl ? (
-                      <img src={profileDraft.photoUrl} alt="Aperçu profil" className="h-full w-full object-cover" />
-                    ) : (
-                      <span className="text-lg font-bold text-slate-700">
-                        {profileDraft.name
-                          .split(' ')
-                          .map((part) => part.charAt(0).toUpperCase())
-                          .slice(0, 2)
-                          .join('')}
-                      </span>
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Édition de profil</p>
-                    <h2 className="text-xl font-bold text-slate-900">Modifier vos informations</h2>
-                  </div>
-                </div>
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 mb-2">Nom complet</label>
-                    <input
-                      value={profileDraft.name}
-                      onChange={(e) => setProfileDraft((prev) => ({ ...prev, name: e.target.value }))}
-                      className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-brand-green"
-                      type="text"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 mb-2">Profession</label>
-                    <input
-                      value={profileDraft.profession}
-                      onChange={(e) => setProfileDraft((prev) => ({ ...prev, profession: e.target.value }))}
-                      className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-brand-green"
-                      type="text"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 mb-2">Email</label>
-                    <input
-                      value={profileDraft.email}
-                      onChange={(e) => setProfileDraft((prev) => ({ ...prev, email: e.target.value }))}
-                      className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-brand-green"
-                      type="email"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 mb-2">Date de naissance</label>
-                    <input
-                      value={profileDraft.dob}
-                      onChange={(e) => setProfileDraft((prev) => ({ ...prev, dob: e.target.value }))}
-                      className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-brand-green"
-                      type="date"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-2">Photo de profil</label>
-                  <div className="flex items-center gap-3">
-                    <label htmlFor="edit-profile-photo" className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-100 cursor-pointer">
-                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                        <polyline points="7 10 12 15 17 10" />
-                        <path d="M12 15V3" />
-                      </svg>
-                      Choisir un fichier
-                    </label>
-                    {profileDraft.photoUrl ? (
-                      <img src={profileDraft.photoUrl} alt="Aperçu du profil" className="h-14 w-14 rounded-full object-cover border border-slate-300" />
-                    ) : (
-                      <div className="h-14 w-14 rounded-full bg-slate-200 border border-slate-300 flex items-center justify-center text-slate-500 text-sm">
-                        Aucun
-                      </div>
-                    )}
-                  </div>
-                  <input
-                    id="edit-profile-photo"
-                    type="file"
-                    accept="image/*"
-                    onChange={handleEditPhoto}
-                    className="sr-only"
-                  />
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={handleSaveProfile}
-                    className="rounded-2xl bg-brand-green px-5 py-3 text-sm font-bold text-slate-950 hover:bg-brand-green/90 transition-all"
-                  >
-                    Enregistrer le profil
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsEditingProfile(false)}
-                    className="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-bold text-slate-700 hover:bg-slate-100 transition-all"
-                  >
-                    Annuler
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
 
       {/* Live State Alert Ticker when someone contributes */}
       <AnimatePresence>
@@ -1192,7 +244,7 @@ export default function App() {
                   </a>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4 pt-6 border-t border-slate-800">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-6 border-t border-slate-800">
                   <div>
                     <span className="block text-2xl font-black text-brand-green">100%</span>
                     <span className="block text-[11px] text-slate-400 mt-0.5">Transparent &amp; Audit prévu</span>
@@ -1244,15 +296,9 @@ export default function App() {
 
                   {/* Sub-campaign stats Grid */}
                   <div className="py-1.5 border-y border-slate-800/80">
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <span className="block text-xl font-bold text-slate-100 font-mono">{backersCount}</span>
-                        <span className="block text-[11px] text-slate-400 mt-0.5">Personnes ayant investi</span>
-                      </div>
-                      <div className="text-right">
-                        <span className="block text-2xl md:text-3xl font-black text-yellow-300 font-mono">{formatFCFA(remainingAmount)}</span>
-                        <span className="block text-[11px] text-slate-400 mt-0.5">Restant à collecter</span>
-                      </div>
+                    <div>
+                      <span className="block text-xl font-bold text-slate-100 font-mono">{backersCount}</span>
+                      <span className="block text-[11px] text-slate-400 mt-0.5">Personnes ayant investi</span>
                     </div>
                   </div>
 
@@ -1261,7 +307,7 @@ export default function App() {
                     onClick={scrollToSimulator}
                     className="w-full py-3.5 bg-brand-green hover:bg-brand-green/95 text-slate-900 font-extrabold rounded-2xl text-xs transition-all shadow-md block text-center"
                   >
-                    Investir dès maintenant
+                    Investisser dès maintenant
                   </button>
 
                 </div>
@@ -1508,7 +554,7 @@ export default function App() {
         {/* SECTION 3.5: TABLEAU FINANCIER D'INVESTISSEMENT */}
         <section className="py-16 bg-white">
           <div className="max-w-7xl mx-auto px-4 sm:px-6">
-            <div id="investment" className="mb-12 text-center scroll-mt-24">
+            <div className="mb-12 text-center">
               <span className="text-xs font-bold text-brand-green uppercase tracking-widest block mb-2">Opportunité d'Investissement</span>
               <h2 className="text-3xl font-extrabold text-brand-blue tracking-tight leading-snug">
                 Rendement selon palier (jusqu'à 400%) en 5 ans
@@ -1540,6 +586,13 @@ export default function App() {
                   L'ensemble de la levée servira à propulser le développement de l'application, l'acquisition de serveurs locaux cloud sécurisés décisifs, et l'implantation territoriale par Mme/M. AYISSOU Koffi Elom et son équipe.
                 </p>
 
+                <div className="p-4 bg-white border border-slate-200 rounded-2xl space-y-2">
+                  <span className="text-slate-500 text-xs block">Coût estimatif de lancement :</span>
+                  <span className="text-2xl font-black text-brand-blue block">{formatFCFA(launchCost)}</span>
+                  <span className="text-xs text-slate-500 block">{launchCostShare}% de l'objectif total estimé</span>
+                  <span className="text-xs text-brand-green font-medium block">Couvre toute la phase pré-SaaS et pilotes d’écoles</span>
+                </div>
+
                 <div className="flex items-start gap-2.5 text-xs text-slate-500 bg-emerald-500/10 text-emerald-800 p-3 rounded-lg border border-emerald-500/20">
                   <ShieldCheck className="w-4 h-4 flex-shrink-0 mt-0.5 text-brand-green" />
                   <span>
@@ -1558,10 +611,184 @@ export default function App() {
           </div>
         </section>
 
-        {/* FUNDING DASHBOARD: statistiques et graphique */}
-        <section className="py-12 bg-white">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6">
-            <FundingDashboard totalGoal={CAMPAGNE_GOAL} raisedAmount={raisedAmount} backers={backersList} />
+        {/* SECTION 5: APPEL A L'ACTION INTERACTIF (SIMULATEUR DE DON) */}
+        <section id="simulateur" className="py-20 bg-white Scroll-mt-20">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 space-y-12">
+            
+            <div className="max-w-3xl mx-auto text-center space-y-4">
+              <span className="text-xs font-bold text-brand-blue uppercase tracking-widest block">Investissement Participatif</span>
+              <h2 className="text-3xl md:text-4xl font-extrabold text-brand-blue tracking-tight leading-snug">
+                Faites un test et simulez un soutien au projet
+              </h2>
+              <div className="w-12 h-1 bg-brand-blue mx-auto rounded-full" />
+              <p className="text-slate-600 text-sm md:text-base leading-relaxed">
+                Utilisez le formulaire interactif ci-dessous pour choisir votre formule ou configurer un don personnalisé. En simulant un paiement, vous mettez à jour instantanément la campagne globale de SchoolTrack !
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-stretch">
+              
+              {/* Left Grid: Contribution Widget (Simulation Workspace) */}
+              <div className="lg:col-span-7">
+                <ContributionWidget 
+                  onContributionAdded={handleContributionAdded}
+                  totalRaised={raisedAmount}
+                  totalGoal={CAMPAGNE_GOAL}
+                  backersList={backersList}
+                />
+              </div>
+
+              {/* Right Grid: Live Recent Supporters lists */}
+              <div className="lg:col-span-5 flex flex-col justify-between">
+                <div className="bg-slate-50 border border-slate-200 rounded-3xl p-6 md:p-8 flex flex-col h-full space-y-6">
+                  
+                  <div>
+                    <h3 className="text-lg font-bold text-brand-blue">Soutiens Récents de la Campagne</h3>
+                    <p className="text-slate-500 text-xs mt-0.5">
+                      Défilement dynamique des contributeurs d'honneur du projet.
+                    </p>
+                  </div>
+
+                  {/* Backer List Ticker Scrollable */}
+                  <div className="flex-grow overflow-y-auto space-y-3.5 max-h-[380px] pr-2.5">
+                    <AnimatePresence initial={false}>
+                      {backersList.map((backer) => (
+                        <motion.div
+                          key={backer.id}
+                          initial={{ opacity: 0, y: -20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.3 }}
+                          className={`p-3.5 rounded-xl border flex items-center justify-between transition-colors ${
+                            backer.isCustom 
+                              ? 'bg-emerald-50 border-brand-green/35' 
+                              : 'bg-white border-slate-100'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div className={`p-2 rounded-full ${backer.isCustom ? 'bg-brand-green/10 text-brand-green' : 'bg-slate-100 text-brand-blue'}`}>
+                              <UserCheck className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <p className="text-xs font-bold text-slate-800">{backer.name}</p>
+                              <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-medium">
+                                <span className="text-slate-500">{backer.time}</span>
+                                <span>•</span>
+                                <span className={`px-1 rounded ${
+                                  backer.badge === 'Platine' || backer.amount >= 150000
+                                    ? 'bg-blue-100 text-blue-800' 
+                                    : backer.badge === 'Or' || backer.amount >= 50000
+                                    ? 'bg-yellow-100 text-yellow-800'
+                                    : 'bg-slate-100 text-slate-600'
+                                } font-semibold`}>
+                                  {backer.badge || (backer.amount >= 50000 ? 'Or' : 'Soutien')}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="text-right">
+                            <span className="font-mono text-xs font-black text-brand-blue block">
+                              +{formatFCFA(backer.amount)}
+                            </span>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                  </div>
+
+                  {/* Motivational footer banner */}
+                  <div className="bg-brand-blue/5 p-4 rounded-2xl border border-slate-100 text-xs text-slate-600 space-y-2.5">
+                    <p className="font-semibold text-brand-blue flex items-center gap-1">
+                      <HelpCircle className="w-4 h-4 text-brand-green" />
+                      Que simule ce widget ?
+                    </p>
+                    <p className="leading-relaxed text-[11px]">
+                      Il s'agit d'une simulation interactive de financement. Elle modifie les variables d'affichage de la plateforme en temps réel pour démontrer son ergonomie et sa compatibilité avec les moyens de paiement d’Afrique de l’Ouest.
+                    </p>
+                  </div>
+
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+        </section>
+
+        {/* SECTION 6: IMPACT SOCIAL & TEMOIGNAGES */}
+        <section id="impact" className="py-20 bg-slate-50 border-t border-slate-100">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 space-y-12">
+            
+            <div className="max-w-3xl mx-auto text-center space-y-4">
+              <span className="text-xs font-bold text-brand-green uppercase tracking-widest block">Paroles de d'Acteurs</span>
+              <h2 className="text-3xl font-extrabold text-brand-blue tracking-tight leading-snug">
+                L’impact social prévu sur le terrain
+              </h2>
+              <div className="w-12 h-1 bg-brand-green mx-auto rounded-full" />
+              <p className="text-slate-600 text-sm leading-relaxed">
+                Retours d'enseignants, de chefs d'établissements administratifs, de parents d'élèves engagés dans nos zones d'études préparatoires de pré-lancement.
+              </p>
+            </div>
+
+            {/* Testimonials cards lists */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {TESTIMONIES.map((testy) => (
+                <div key={testy.id} className="bg-white p-6 rounded-2xl border border-slate-150 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow relative">
+                  
+                  {/* Visual quote mark decor */}
+                  <span className="absolute -top-3 -left-1 text-7xl text-brand-green/10 font-serif leading-none pointer-events-none">“</span>
+                  
+                  <blockquote className="text-slate-600 text-xs leading-relaxed italic relative z-10 mb-6">
+                    {testy.quote}
+                  </blockquote>
+
+                  <div className="flex items-center gap-3.5 border-t border-slate-100 pt-4">
+                    <img 
+                      src={testy.avatar} 
+                      alt={testy.name}
+                      className="w-10 h-10 rounded-full object-cover border border-slate-100"
+                      referrerPolicy="no-referrer"
+                    />
+                    <div>
+                      <span className="block font-bold text-slate-800 text-xs leading-none">{testy.name}</span>
+                      <span className="text-[10px] text-slate-400 mt-1 block font-medium">
+                        {testy.role} — <strong className="text-slate-500 font-semibold">{testy.location}</strong>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Icons indicators summary as requested */}
+            <div className="bg-white rounded-3xl p-6 md:p-8 border border-slate-200 shadow-sm text-center">
+              <h4 className="text-xs font-bold text-brand-blue uppercase tracking-widest mb-6">Objectifs qualitatifs mesurés par SchoolTrack</h4>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div className="space-y-2">
+                  <span className="text-3xl block">📱</span>
+                  <h5 className="font-bold text-slate-800 text-sm">Suivi en temps réel</h5>
+                  <p className="text-slate-500 text-xs leading-relaxed max-w-xs mx-auto">
+                    Diffusion d'alertes instantanées par SMS et passerelles de messageries pour toute absence indésirée détectée.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <span className="text-3xl block">👨‍👩‍👧</span>
+                  <h5 className="font-bold text-slate-800 text-sm">Implication parentale renforcée</h5>
+                  <p className="text-slate-500 text-xs leading-relaxed max-w-xs mx-auto">
+                    Connexion permanente et fluide avec l'école : justificatifs, bulletins, cahiers d'évaluation à portée d'un clic.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <span className="text-3xl block">🎓</span>
+                  <h5 className="font-bold text-slate-800 text-sm">Garantie de réussite scolaire</h5>
+                  <p className="text-slate-500 text-xs leading-relaxed max-w-xs mx-auto">
+                    Réaction immédiate de la famille face aux difficultés scolaires, réduisant le taux d'échec de façon quantifiable d'ici la fin du trimestre.
+                  </p>
+                </div>
+              </div>
+            </div>
+
           </div>
         </section>
 
@@ -1642,7 +869,7 @@ export default function App() {
                 <div className="space-y-4">
                   <h3 className="text-lg font-bold text-brand-blue">Envoyer une question ou expression d’intérêt</h3>
                   <p className="text-xs text-slate-500">
-                    Vous êtes investisseur qualifié et souhaitez discuter avec notre équipe ? Écrivez-nous directement.
+                    Vous êtes directeur d’établissement, investisseur qualifié ou parent d’élève et souhaitez discuter du calendrier de déploiement ? Écrivez-nous directement.
                   </p>
 
                   {contactSuccess ? (
@@ -1690,7 +917,7 @@ export default function App() {
                         <textarea 
                           rows={4}
                           required
-                          placeholder="Bonjour Koffi, je suis commerçant à Lomé et j'aimerais investir dans votre projet dès maintenant..."
+                          placeholder="Bonjour Koffi, je suis directeur de collège à Lomé et j'aimerais équiper nos 400 élèves dès la prochaine rentrée..."
                           value={contactMsg}
                           onChange={(e) => setContactMsg(e.target.value)}
                           className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-hidden focus:border-brand-blue"
@@ -1781,4 +1008,3 @@ export default function App() {
     </div>
   );
 }
-
